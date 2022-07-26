@@ -1,5 +1,5 @@
-python scripts/train_rgn2.py --device cuda:0 \
-                            --wb_proj RGN2_reproduce \
-                            --wb_entity RGN2_reproduce \
-                            --run_name RGN2_reproduce \
+python scripts/train_rgn2.py --device=cuda:6 \
+                            --wb_proj=RGN2 \
+                            --wb_entity=exp1 \
+                            --run_name=drmsd_loss_at5 \
                             --embedder_model=esm1b

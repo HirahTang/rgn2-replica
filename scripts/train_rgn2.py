@@ -330,11 +330,11 @@ def get_training_schedule(args):
     #loss_f = " metrics['drmsd'].mean() / (len(infer['seq']) * 100) " 
     #loss_f = " torsion_loss.mean() / len(infer['seq']) "
     #         steps, ckpt, lr , bs , max_len, clip, loss_f, random_seed
-    #return [[32, 135, 1e-3, 16, args.max_len, None, loss_f, 42, ],
-    #        [64, 135, 1e-3, 32, args.max_len, None, loss_f, 42, ]]
-    return [[32000, 135   , 1e-3, 16  , args.max_len, None, loss_f, 42  , ],
-            [64000, 135   , 1e-3, 32  , args.max_len, None, loss_f, 42  , ],
-            [32000, 135   , 1e-4, 32  , args.max_len, None, loss_f, 42  , ],]
+    return [[32, 135, 1e-3, 16, args.max_len, None, loss_f, 42, ],
+            [64, 135, 1e-3, 32, args.max_len, None, loss_f, 42, ]]
+    #return [[32000, 135   , 1e-3, 16  , args.max_len, None, loss_f, 42  , ],
+    #        [64000, 135   , 1e-3, 32  , args.max_len, None, loss_f, 42  , ],
+    #        [32000, 135   , 1e-4, 32  , args.max_len, None, loss_f, 42  , ],]
 
 
 if __name__ == '__main__':
