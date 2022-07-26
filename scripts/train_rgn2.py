@@ -63,6 +63,7 @@ def parse_arguments():
 
 
 def load_dataloader(args):
+    os.chdir('/home/tanghan')
     dataloaders = sidechainnet.load(
         casp_version=args.casp_version, 
         thinning=args.scn_thinning, 
