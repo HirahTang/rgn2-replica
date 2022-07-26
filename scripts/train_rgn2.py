@@ -9,6 +9,9 @@ import torch
 import esm
 import sidechainnet
 from sidechainnet.utils.sequence import ProteinVocabulary as VOCAB
+import sys
+sys.path.append('/home/tanghan/rgn2-replica')
+sys.path.append('/home/tanghan/rgn2-replica/mp_nerf')
 
 # IMPORTED ALSO IN LATER MODULES
 VOCAB = VOCAB()
@@ -17,7 +20,7 @@ import mp_nerf
 from rgn2_replica.rgn2_trainers import *
 from rgn2_replica.embedders import *
 from rgn2_replica import set_seed, RGN2_Naive
-
+from rgn2_replica import utils
 
 
 
@@ -88,8 +91,8 @@ def save_as_txt(*items, path):
 
 
 def init_wandb_config(args):
-    wandb.init(project=args.wb_proj, entity=args.wb_entity, name=args.run_name)
-
+    #wandb.init(project=args.wb_proj, entity=args.wb_entity, name=args.run_name)
+    wandb.init(project=args.wb_proj, name=args.run_name)
     # 2. Save model inputs and hyperparameters
     config = wandb.config
     config.seed = args.seed
@@ -179,7 +182,7 @@ def run_train_schedule(dataloaders, embedder, config, args):
         if True:
             # if seed is not None:
             set_seed(seed)
-            get_prot_ = mp_nerf.utils.get_prot(
+            get_prot_ = utils.get_prot(
                 dataloader_=dataloaders,
                 vocab_=VOCAB,
                 min_len=config.min_len, max_len=max_len,  # MAX_LEN,
@@ -323,9 +326,12 @@ def run_train_schedule(dataloaders, embedder, config, args):
 
 
 def get_training_schedule(args):
-    loss_f = " metrics['drmsd'].mean() / len(infer['seq']) " 
-
-    #         steps, ckpt, lr , bs , max_len, clip, loss_f
+    loss_f = " (metrics['drmsd'].mean() / 100 + torsion_loss.mean()) / len(infer['seq']) "
+    #loss_f = " metrics['drmsd'].mean() / (len(infer['seq']) * 100) " 
+    #loss_f = " torsion_loss.mean() / len(infer['seq']) "
+    #         steps, ckpt, lr , bs , max_len, clip, loss_f, random_seed
+    #return [[32, 135, 1e-3, 16, args.max_len, None, loss_f, 42, ],
+    #        [64, 135, 1e-3, 32, args.max_len, None, loss_f, 42, ]]
     return [[32000, 135   , 1e-3, 16  , args.max_len, None, loss_f, 42  , ],
             [64000, 135   , 1e-3, 32  , args.max_len, None, loss_f, 42  , ],
             [32000, 135   , 1e-4, 32  , args.max_len, None, loss_f, 42  , ],]

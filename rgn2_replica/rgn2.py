@@ -58,6 +58,75 @@ def pred_post_process(points_preds: torch.Tensor,
         * frames_preds: (B, L, 3, 3)
         * wrapper_pred: (B, L, 14, 3)
     """
+
+    # Define auxilary functions here
+    def ensure_chirality(coords_wrapper, use_backbone=True): 
+        """ Ensures protein agrees with natural distribution 
+            of chiral bonds (ramachandran plots).
+            Reflects ( (-1)*Z ) the ones that do not. 
+            Inputs: 
+            * coords_wrapper: (B, L, C, 3) float tensor. First 3 atoms
+                            in C should be N-CA-C
+            * use_backbone: bool. whether to use the backbone (better, more robust) 
+                                if provided, or just use c-alphas. 
+            Ouputs: (B, L, C, 3)
+        """
+        
+        # detach gradients for angle calculation - mirror selection
+        coords_wrapper_ = coords_wrapper.detach()
+        mask = coords_wrapper_.abs().sum(dim=(-1, -2)) != 0.
+
+        # if BB present: use bb dihedrals
+        if coords_wrapper[:, :, 0].abs().sum() != 0. and use_backbone:
+            # compute phis for every protein in the batch
+            phis = get_dihedral(
+                coords_wrapper_[:, :-1, 2], # C_{i-1}
+                coords_wrapper_[:, 1: , 0], # N_{i}
+                coords_wrapper_[:, 1: , 1], # CA_{i}
+                coords_wrapper_[:, 1: , 2], # C_{i}
+            )
+
+            # get proportion of negatives
+            props = [(phis[i, mask[i, :-1]] > 0).float().mean() for i in range(mask.shape[0])]
+
+            # fix mirrors by (-1)*Z if more (+) than (-) phi angles
+            corrector = torch.tensor([ [1, 1, -1 if p > 0.5 else 1]  # (B, 3)
+                                    for p in props ], dtype=coords_wrapper.dtype)
+
+            return coords_wrapper * corrector.to(coords_wrapper.device)[:, None, None, :]
+        else: 
+            return coords_wrapper
+
+    # inspired by: https://www.biorxiv.org/content/10.1101/2021.08.02.454840v1
+    def ca_from_angles(angles, bond_len=3.80): 
+        """ Builds a C-alpha trace from a set of 2 angles (theta, chi). 
+            Inputs: 
+            * angles: (B, L, 4): float tensor. (cos, sin) · (theta, chi)
+                    angles in point-in-unit-circumference format. 
+            Outputs: (B, L, 3) coords for c-alpha trace
+        """
+        device = angles.device
+        length = angles.shape[-2]
+        frames = [ torch.repeat_interleave(
+                    torch.eye(3, device=device, dtype=torch.double).unsqueeze(0), 
+                    angles.shape[0], 
+                    dim=0
+                )]
+
+        rot_mats = torch.stack([ 
+            torch.stack([  angles[...,0] * angles[...,2], angles[...,0] * angles[...,3], -angles[...,1]    ], dim=-1),
+            torch.stack([ -angles[...,3]                , angles[...,2]                ,  angles[...,0]*0. ], dim=-1),
+            torch.stack([  angles[...,1] * angles[...,2], angles[...,1] * angles[...,3],  angles[...,0]    ], dim=-1),
+        ], dim=-2)  # (B, L, 3, 3)
+
+        # iterative update of frames - skip last frame. 
+        for i in range(length-1): 
+            frames.append( rot_mats[:, i] @ frames[i] ) # could do frames[-1] as well
+        frames = torch.stack(frames, dim=1) # (B, L, 3, 3)
+            
+        ca_trace = bond_len * frames[..., -1, :].cumsum(dim=-2) # (B, L, 3)
+
+        return ca_trace, frames
     device = points_preds.device
     if mask is None:
         mask = torch.ones(points_preds.shape[:-2], dtype=torch.bool)
@@ -617,8 +686,25 @@ class RGN2_Naive(torch.nn.Module):
         """ Applies dropout but skips last 4 dims (encoding for torsions) 
             in the first pss (i=0)
         """
+        #print(x.shape, i)
+        
+        #inter = self.dropout_l(x[..., :-d], x[..., -d:])
+        #inter = torch.nn.Identity()(x[..., :-d], x[..., -d:])
+        #print(x.shape, x[...,:-d].shape, x[..., -d:].shape)
+        #inter = torch.cat([x[..., :-d], x[..., -d:]])
+        #print(inter.shape)
+        #print(x.shape)
+        #inter = torch.cat((x[..., :-d], x[..., -d:]), dim = -1)
+        #print(inter.shape)
+        #print(torch.nn.Dropout(0.1)(inter).shape)
+        #print(torch.nn.Identity()(inter).shape)
+        
         return self.dropout_l(x) if i != 0 else \
-               torch.cat([self.dropout_l(x[..., :-d], x[..., -d:])], dim=-1)
+               torch.cat((self.dropout_l(x[..., :-d]), x[..., -d:]), dim = -1)
+        #return self.dropout_l(x) if i != 0 else \
+        #       torch.cat([self.dropout_l()], dim=-1)
+        #return self.dropout_l(x)
+            
 
 
     def forward(self, x:torch.Tensor, mask: Optional[torch.Tensor] = None,
@@ -637,6 +723,7 @@ class RGN2_Naive(torch.nn.Module):
             Note: 4 last dims of input is angles of previous point.
                   for first point, add dumb token [-5, -5, -5, -5]
         """
+#        print("forward success here")
         r_iters = []
         x_buffer = x.clone() if recycle > 1 else x       # buffer for iters
         if mask is None:
@@ -652,6 +739,7 @@ class RGN2_Naive(torch.nn.Module):
                 x_f, (h_n, c_n) = self.stacked_lstm_f[k](
                     self.apply_dropout(x_pred, i=k, d=4), mask=mask
                 )
+                #print("Dropout Success here")
 
                 if self.bidirectional:
                     # reverse - only the sequence part

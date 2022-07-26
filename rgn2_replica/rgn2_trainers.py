@@ -386,6 +386,8 @@ def predict(get_prot_, steps, model, embedder, return_preds=True,
     return preds_list, metrics_list, metrics_stats
 
 
+# def parameters
+
 def train(get_prot_, steps, model, embedder, optim, loss_f=None, 
           clip=None, accumulate_every=1, log_every=None, seed=None, wandbai=False, 
           recycle_func=lambda x: 1, config=None): 
@@ -420,11 +422,22 @@ def train(get_prot_, steps, model, embedder, optim, loss_f=None,
     b = 0
     tic = time.time()
     while b < (steps//accumulate_every): # steps: # 
+
+        #print(model.parameters())
+
         if b == 0 and seed is not None: 
             set_seed(seed)
 
         # get data + predict
         prots = [ next(get_prot_) for i in range(accumulate_every) ]
+
+        #print(len(prots))
+        #print(len(prots[0]))
+        #print(prots[0][2])
+        #print(prots[0][2].shape)
+        #print(prots[0][3].shape)
+
+
         infer_batch = batched_inference(
             *prots, 
             model=model, embedder=embedder, 
@@ -434,8 +447,11 @@ def train(get_prot_, steps, model, embedder, optim, loss_f=None,
 
         # calculate metrics
         loss = 0.
+        #print(infer_batch)
+
         for i, infer in enumerate(infer_batch):
             # calc loss terms 
+            #print(infer["points_preds"])
             torsion_loss = mp_nerf.ml_utils.torsion_angle_loss(
                 pred_points=infer["points_preds"][:, :-1], # [angle_mask].reshape(1, -1, 1, 2), # (B, no_pad_among(L*2), 1, 2) 
                 true_points=infer["points_label"][:, :-1], # [angle_mask].reshape(1, -1, 1, 2), # (B, no_pad_among(L*2), 1, 2) 
@@ -448,6 +464,19 @@ def train(get_prot_, steps, model, embedder, optim, loss_f=None,
             viol_loss = -(dist_mat - 3.78).clamp(min=-np.inf, max=0.).contiguous()
             
             # calc metrics
+
+            # Input Insepctions
+           # print(infer['coords'].shape)
+           # print(infer['wrapper_pred'].shape)
+           # for l in range(infer['wrapper_pred'].shape[2]):
+           #     print('\n')
+
+           #     for i in range(14):
+           #         print(infer['coords'][0, l, i, :])
+             
+            
+
+
             metrics = mp_nerf.proteins.get_protein_metrics(
                 true_coords=infer["coords"], # [:, infer["mask"]],
                 pred_coords=infer["wrapper_pred"], # [:, infer["mask"]],
@@ -458,9 +487,12 @@ def train(get_prot_, steps, model, embedder, optim, loss_f=None,
             if isinstance(loss_f, str):
                 loss_item = eval(loss_f)
             else: 
+                
                 loss_item = torsion_loss.mean() + metrics["drmsd"].mean() # + 
             loss += loss_item 
-
+            #print(loss_item, torsion_loss, metrics['drmsd'])
+            #print(len(infer['seq']))
+            #print(torsion_loss.mean() / len(infer['seq']) )
             # record
             log_dict = {
                 "torsion_loss": torsion_loss.mean().item(),
